@@ -1,18 +1,18 @@
 import React, { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { 
-  GraduationCap, 
-  Mail, 
-  Lock, 
-  User, 
-  Hash, 
-  BookOpen, 
-  UserPlus, 
-  Eye, 
-  EyeOff, 
-  Sparkles, 
-  CheckCircle2, 
+import {
+  GraduationCap,
+  Mail,
+  Lock,
+  User,
+  Hash,
+  BookOpen,
+  UserPlus,
+  Eye,
+  EyeOff,
+  Sparkles,
+  CheckCircle2,
   AlertCircle,
   ShieldCheck
 } from 'lucide-react';
@@ -82,20 +82,25 @@ export const SignUp: React.FC = () => {
     setError('');
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
     if (!formData.name.trim()) {
       setError('Please provide your full legal name');
       return;
     }
+
     if (!formData.email.trim()) {
       setError('Please provide a valid university email address');
       return;
     }
+
     if (formData.password.length < 6) {
       setError('Password must contain at least 6 characters');
       return;
     }
+
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match. Please re-type your password confirmation.');
       return;
@@ -104,8 +109,8 @@ export const SignUp: React.FC = () => {
     setError('');
     setIsLoading(true);
 
-    setTimeout(() => {
-      const res = signup({
+    try {
+      const res = await signup({
         name: formData.name,
         student_id: formData.student_id || `STU-2026-${Math.floor(100 + Math.random() * 899)}`,
         department: formData.department,
@@ -113,14 +118,22 @@ export const SignUp: React.FC = () => {
         email: formData.email,
       }, formData.password);
 
-      setIsLoading(false);
-      if (res.success) {
-        navigate('/');
+      if (res.requiresConfirmation) {
+        navigate('/verify-email', {
+          state: { email: formData.email.trim().toLowerCase() }
+        });
+      } else if (res.success) {
+        navigate('/login');
       } else {
         setError(res.error || 'Failed to complete student registration');
       }
-    }, 450);
+    } catch {
+      setError('Unable to connect to the registration service.');
+    } finally {
+      setIsLoading(false);
+    }
   };
+
 
   return (
     <div className="auth-page-container">
@@ -304,12 +317,12 @@ export const SignUp: React.FC = () => {
                 <span style={{ color: passwordStrength.color, fontWeight: 700 }}>{passwordStrength.label}</span>
               </div>
               <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', overflow: 'hidden' }}>
-                <div 
-                  style={{ 
-                    width: `${passwordStrength.score}%`, 
-                    height: '100%', 
-                    background: passwordStrength.color, 
-                    transition: 'all 0.3s ease' 
+                <div
+                  style={{
+                    width: `${passwordStrength.score}%`,
+                    height: '100%',
+                    background: passwordStrength.color,
+                    transition: 'all 0.3s ease'
                   }}
                 />
               </div>

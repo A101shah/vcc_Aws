@@ -12,6 +12,7 @@ import { Login } from './pages/Login';
 import { SignUp } from './pages/SignUp';
 import { Bell } from 'lucide-react';
 import { MyCourses } from './pages/MyCourses';
+import { VerifyEmail } from './pages/VerifyEmail';
 
 const NotificationsPage: React.FC = () => (
   <div className="animate-fade-in" style={{ maxWidth: '900px' }}>
@@ -100,29 +101,30 @@ const App: React.FC = () => {
             {/* Public Auth Routes */}
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<SignUp />} />
+            <Route path="/verify-email" element={<VerifyEmail />} />
 
 
-          {/* Protected Portal Engine Application Routes */}
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute>
-                <Layout />
-              </ProtectedRoute>
-            }
-          >
-            <Route index element={<Dashboard />} />
-            <Route path="courses" element={<MyCourses />} />
-            <Route path="courses/:id" element={<CoursePage />} />
-            <Route path="desired-grades" element={<DesiredGrades />} />
-            <Route path="profile" element={<Profile />} />
-            <Route path="notifications" element={<NotificationsPage />} />
-          </Route>
+            {/* Protected Portal Engine Application Routes */}
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <Layout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<Dashboard />} />
+              <Route path="courses" element={<MyCourses />} />
+              <Route path="courses/:id" element={<CoursePage />} />
+              <Route path="desired-grades" element={<DesiredGrades />} />
+              <Route path="profile" element={<Profile />} />
+              <Route path="notifications" element={<NotificationsPage />} />
+            </Route>
 
-          {/* Fallback */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Router>
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Router>
       </CourseProvider>
     </AuthProvider>
   );

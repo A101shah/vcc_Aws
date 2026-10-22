@@ -1,212 +1,313 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+} from 'react';
+
+import {
+  signIn,
+  signUp,
+  confirmSignUp,
+  resendSignUpCode,
+  signOut,
+  getCurrentUser,
+  fetchUserAttributes,
+  updateUserAttributes,
+} from 'aws-amplify/auth';
+
 import type { Student } from '../types';
 
-export interface RegisteredAccount extends Student {
-  password?: string;
-  createdAt?: string;
-}
+type AuthResult = {
+  success: boolean;
+  error?: string;
+  requiresConfirmation?: boolean;
+};
 
 interface AuthContextType {
   user: Student | null;
   isAuthenticated: boolean;
-  login: (email: string, password?: string) => { success: boolean; error?: string };
-  signup: (userData: Omit<Student, 'profile_image'>, password?: string) => { success: boolean; error?: string };
-  logout: () => void;
-  updateUser: (updatedData: Partial<Student>) => void;
+  isLoading: boolean;
+
+  login: (
+    email: string,
+    password?: string
+  ) => Promise<AuthResult>;
+
+
+  signup: (
+    userData: Omit<Student, 'profile_image'>,
+    password?: string
+  ) => Promise<{
+    success: boolean;
+    error?: string;
+    requiresConfirmation?: boolean;
+  }>;
+
+
+  confirmEmail: (
+    email: string,
+    code: string
+  ) => Promise<AuthResult>;
+
+  resendCode: (email: string) => Promise<AuthResult>;
+
+  logout: () => Promise<void>;
+
+  updateUser: (
+    updatedData: Partial<Student>
+  ) => Promise<void>;
+
   registeredUsersCount: number;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AuthContext =
+  createContext<AuthContextType | undefined>(undefined);
 
-export const STORAGE_KEY = 'portal_engine_user';
-export const USERS_STORAGE_KEY = 'portal_engine_all_users';
-
-export const DEFAULT_USERS: RegisteredAccount[] = [
-  {
-    student_id: "STU-2026-001",
-    name: "Aarav Patel",
-    email: "aarav@example.edu",
-    password: "demoPass123",
-    department: "Data Science",
-    semester: 5,
-    createdAt: "2026-08-15T09:00:00.000Z"
-  },
-  {
-    student_id: "STU-2026-042",
-    name: "Elena Rostova",
-    email: "elena.rostova@example.edu",
-    password: "elenaPass123",
-    department: "Artificial Intelligence & ML",
-    semester: 5,
-    createdAt: "2026-08-15T09:00:00.000Z"
+const getErrorMessage = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message;
   }
-];
+  return 'An unexpected authentication error occurred.';
+};
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Ensure default users are seeded into localStorage
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(USERS_STORAGE_KEY);
-      if (!stored) {
-        localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(DEFAULT_USERS));
-      }
-    } catch (e) {
-      console.error('Error seeding initial demo users', e);
-    }
+export const AuthProvider: React.FC<{
+  children: React.ReactNode;
+}> = ({ children }) => {
+  const [user, setUser] = useState<Student | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const loadUser = useCallback(async () => {
+    const currentUser = await getCurrentUser();
+    const attributes = await fetchUserAttributes();
+
+    const student: Student = {
+      student_id: currentUser.userId,
+      name:
+        attributes.name ||
+        attributes.email ||
+        'Student',
+      email: attributes.email || '',
+      department:
+        attributes['custom:department'] ||
+        'Computer Science & Engineering',
+      semester: Number(
+        attributes['custom:semester'] || 1
+      ),
+    };
+
+    setUser(student);
+    return student;
   }, []);
 
-  const [user, setUser] = useState<Student | null>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch (e) {
-      console.error('Error loading saved user session', e);
-    }
-    return null;
-  });
-
   useEffect(() => {
-    if (user) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-    } else {
-      localStorage.removeItem(STORAGE_KEY);
-    }
-  }, [user]);
+    let active = true;
 
-  const getStoredUsers = (): RegisteredAccount[] => {
-    try {
-      const stored = localStorage.getItem(USERS_STORAGE_KEY);
-      if (stored) {
-        return JSON.parse(stored);
+    const restoreSession = async () => {
+      try {
+        const currentUser = await getCurrentUser();
+        const attributes = await fetchUserAttributes();
+
+        if (!active) return;
+
+        setUser({
+          student_id: currentUser.userId,
+          name: attributes.name || 'Student',
+          email: attributes.email || '',
+          department:
+            attributes['custom:department'] ||
+            'Computer Science & Engineering',
+          semester: Number(
+            attributes['custom:semester'] || 1
+          ),
+        });
+      } catch {
+        if (active) setUser(null);
+      } finally {
+        if (active) setIsLoading(false);
       }
-    } catch (e) {
-      console.error('Error reading stored users', e);
-    }
-    return DEFAULT_USERS;
-  };
+    };
 
-  const login = (email: string, password?: string): { success: boolean; error?: string } => {
-    const trimmedEmail = email.trim().toLowerCase();
-    if (!trimmedEmail) {
-      return { success: false, error: 'Please enter your registered university email.' };
-    }
-    if (!password) {
-      return { success: false, error: 'Please enter your password.' };
-    }
+    void restoreSession();
 
-    try {
-      const users = getStoredUsers();
-      const matched = users.find(u => u.email.toLowerCase() === trimmedEmail);
+    return () => {
+      active = false;
+    };
+  }, []);
 
-      if (!matched) {
-        return { 
-          success: false, 
-          error: 'No student account matches this email. Please check your spelling or register a new profile below.' 
-        };
-      }
-
-      if (matched.password && matched.password !== password) {
-        return { 
-          success: false, 
-          error: 'Incorrect password. Please verify your credentials or click 1-Click Demo Login.' 
-        };
-      }
-
-      const { password: _, ...studentData } = matched;
-      setUser(studentData);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(studentData));
-      return { success: true };
-    } catch (err) {
-      console.error(err);
-      return { success: false, error: 'An unexpected authentication error occurred.' };
-    }
-  };
-
-  const signup = (userData: Omit<Student, 'profile_image'>, password?: string): { success: boolean; error?: string } => {
-    const trimmedEmail = (userData.email || '').trim().toLowerCase();
-    const trimmedName = (userData.name || '').trim();
-
-    if (!trimmedName || trimmedName.length < 2) {
-      return { success: false, error: 'Please enter your full legal name (at least 2 characters).' };
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!trimmedEmail || !emailRegex.test(trimmedEmail)) {
-      return { success: false, error: 'Please provide a valid university email address (e.g. name@university.edu).' };
-    }
-
-    if (!password || password.length < 6) {
-      return { success: false, error: 'Password must be at least 6 characters long.' };
-    }
-
-    try {
-      const users = getStoredUsers();
-
-      if (users.some(u => u.email.toLowerCase() === trimmedEmail)) {
-        return { 
-          success: false, 
-          error: 'An account with this email address already exists. Please sign in instead.' 
-        };
-      }
-
-      const newAccount: RegisteredAccount = {
-        student_id: userData.student_id?.trim() || `STU-2026-${Math.floor(100 + Math.random() * 900)}`,
-        name: trimmedName,
-        email: trimmedEmail,
-        department: userData.department || 'Computer Science & Engineering',
-        semester: userData.semester || 1,
-        password: password,
-        createdAt: new Date().toISOString()
+  const login = async (
+    email: string,
+    password?: string
+  ): Promise<AuthResult> => {
+    if (!email.trim() || !password) {
+      return {
+        success: false,
+        error: 'Email and password are required.',
       };
-
-      const updatedUsers = [...users, newAccount];
-      localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(updatedUsers));
-
-      const { password: _, ...studentData } = newAccount;
-      setUser(studentData);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(studentData));
-      return { success: true };
-    } catch (e) {
-      console.error(e);
-      return { success: false, error: 'Failed to create student account due to storage limits.' };
     }
-  };
-
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem(STORAGE_KEY);
-  };
-
-  const updateUser = (updatedData: Partial<Student>) => {
-    if (!user) return;
-    const updated = { ...user, ...updatedData };
-    setUser(updated);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
 
     try {
-      const users = getStoredUsers();
-      const index = users.findIndex(u => u.email.toLowerCase() === user.email.toLowerCase());
-      if (index !== -1) {
-        users[index] = { ...users[index], ...updatedData };
-        localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
+      const result = await signIn({
+        username: email.trim().toLowerCase(),
+        password,
+      });
+
+      if (result.isSignedIn) {
+        await loadUser();
+        return { success: true };
       }
-    } catch (e) {
-      console.error('Error updating user in stored list', e);
+
+      if (
+        result.nextStep.signInStep ===
+        'CONFIRM_SIGN_UP'
+      ) {
+        return {
+          success: false,
+          requiresConfirmation: true,
+          error: 'Please verify your email first.',
+        };
+      }
+
+      return {
+        success: false,
+        error:
+          `Additional authentication required: ${result.nextStep.signInStep
+          }`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(error),
+      };
     }
+  };
+
+  const signup = async (
+    userData: Omit<Student, 'profile_image'>,
+    password?: string
+  ): Promise<AuthResult> => {
+    const email = userData.email.trim().toLowerCase();
+
+    if (!userData.name.trim() || !email || !password) {
+      return {
+        success: false,
+        error: 'Name, email and password are required.',
+      };
+    }
+
+    try {
+      const result = await signUp({
+        username: email,
+        password,
+        options: {
+          userAttributes: {
+            email,
+            name: userData.name.trim(),
+          },
+        },
+      });
+
+      return {
+        success: result.isSignUpComplete,
+        requiresConfirmation:
+          !result.isSignUpComplete,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(error),
+      };
+    }
+  };
+
+  const confirmEmail = async (
+    email: string,
+    code: string
+  ): Promise<AuthResult> => {
+    try {
+      const result = await confirmSignUp({
+        username: email.trim().toLowerCase(),
+        confirmationCode: code.trim(),
+      });
+
+      return {
+        success: result.isSignUpComplete,
+        requiresConfirmation:
+          !result.isSignUpComplete,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(error),
+      };
+    }
+  };
+
+  const resendCode = async (
+    email: string
+  ): Promise<AuthResult> => {
+    try {
+      await resendSignUpCode({
+        username: email.trim().toLowerCase(),
+      });
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(error),
+      };
+    }
+  };
+
+  const logout = async () => {
+    try {
+      await signOut();
+    } finally {
+      setUser(null);
+    }
+  };
+
+  const updateUser = async (
+    updatedData: Partial<Student>
+  ) => {
+    if (!user) return;
+
+    const attributes: Record<string, string> = {};
+
+    if (updatedData.name !== undefined) {
+      attributes.name = updatedData.name;
+    }
+
+    if (Object.keys(attributes).length > 0) {
+      await updateUserAttributes({
+        userAttributes: attributes,
+      });
+    }
+
+    setUser(previous =>
+      previous
+        ? { ...previous, ...updatedData }
+        : null
+    );
   };
 
   return (
-    <AuthContext.Provider value={{ 
-      user, 
-      isAuthenticated: !!user, 
-      login, 
-      signup, 
-      logout, 
-      updateUser,
-      registeredUsersCount: getStoredUsers().length
-    }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        isAuthenticated: !!user,
+        isLoading,
+        login,
+        signup,
+        confirmEmail,
+        resendCode,
+        logout,
+        updateUser,
+        registeredUsersCount: 0,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -214,8 +315,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
+
   if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error(
+      'useAuth must be used within an AuthProvider'
+    );
   }
+
   return context;
 };

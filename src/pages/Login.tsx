@@ -1,16 +1,16 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { 
-  GraduationCap, 
-  Mail, 
-  Lock, 
-  Eye, 
-  EyeOff, 
-  LogIn, 
-  ArrowRight, 
-  Sparkles, 
-  CheckCircle2, 
+import {
+  GraduationCap,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  LogIn,
+  ArrowRight,
+  Sparkles,
+  CheckCircle2,
   AlertCircle,
   ShieldCheck,
   UserCheck
@@ -25,7 +25,7 @@ export const Login: React.FC = () => {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim()) {
       setError('Please enter your university email address');
@@ -39,32 +39,33 @@ export const Login: React.FC = () => {
     setError('');
     setIsLoading(true);
 
-    setTimeout(() => {
-      const res = login(email, password);
-      setIsLoading(false);
+
+    try {
+      const res = await login(email, password);
+
       if (res.success) {
         navigate('/');
       } else {
-        setError(res.error || 'Authentication failed. Please verify your credentials.');
+        setError(res.error || 'Authentication failed.');
       }
-    }, 350);
+    } catch {
+      setError('Unable to connect to the authentication service.');
+    } finally {
+      setIsLoading(false);
+    }
+
   };
 
-  const handleDemoLogin = (demoEmail: string, demoPass: string) => {
-    setEmail(demoEmail);
-    setPassword(demoPass);
-    setError('');
-    setIsLoading(true);
-    setTimeout(() => {
-      const res = login(demoEmail, demoPass);
-      setIsLoading(false);
-      if (res.success) {
-        navigate('/');
-      } else {
-        setError(res.error || 'Demo login failed.');
-      }
-    }, 300);
+
+  const handleDemoLogin = (
+    _demoEmail: string,
+    _demoPass: string
+  ) => {
+    setError(
+      'Demo login is temporarily disabled. Please register a student account using Amazon Cognito.'
+    );
   };
+
 
   return (
     <div className="auth-page-container">
@@ -117,8 +118,8 @@ export const Login: React.FC = () => {
           <div className="form-group">
             <div className="form-label-row">
               <label htmlFor="login-password" className="form-label">Password</label>
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => handleDemoLogin('aarav@example.edu', 'demoPass123')}
                 className="forgot-link"
                 style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
